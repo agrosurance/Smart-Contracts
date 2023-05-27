@@ -59,6 +59,7 @@ contract AgroSuranceLand is ERC721, ERC721Enumerable, ERC721Burnable, Ownable {
     error CycleNotStartedYet();
     error CycleEndTimeLessThanStart();
     error EmptyString();
+    error CannotTransferLand();
 
     constructor(
         string memory _description,
@@ -155,6 +156,7 @@ contract AgroSuranceLand is ERC721, ERC721Enumerable, ERC721Burnable, Ownable {
         uint256 tokenId,
         uint256 batchSize
     ) internal override(ERC721, ERC721Enumerable) {
+        if (from != address(0) && to != address(0)) revert CannotTransferLand();
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
     }
 

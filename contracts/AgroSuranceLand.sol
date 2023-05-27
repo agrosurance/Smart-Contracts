@@ -166,6 +166,8 @@ contract AgroSuranceLand is ERC721, ERC721Enumerable, ERC721Burnable, Ownable {
     function tokenURI(
         uint256 tokenId
     ) public view override returns (string memory) {
+        _requireMinted(tokenId);
+
         Land memory land = landDetails[tokenId];
         Crop memory crop = cropDetails[
             land.currentCycleTo > block.timestamp ? land.currentCycleCropId : 0
@@ -177,8 +179,7 @@ contract AgroSuranceLand is ERC721, ERC721Enumerable, ERC721Burnable, Ownable {
                 land.name,
                 " (",
                 crop.name,
-                ")",
-                '","image":"',
+                ')","image":"',
                 crop.image,
                 '","description":"',
                 description,

@@ -31,4 +31,10 @@ contract MyContract is Pausable, AccessControl {
         (bool sent, ) = to.call{value: amount}("");
         if (!sent) revert TransferFailed();
     }
+
+    // Function to receive Ether. msg.data must be empty
+    receive() external payable {}
+
+    // Fallback function is called when msg.data is not empty
+    fallback() external payable {}
 }

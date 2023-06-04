@@ -4,7 +4,7 @@ pragma solidity ^0.8.17;
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
-contract MyContract is Pausable, AccessControl {
+contract FundManager is Pausable, AccessControl {
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant TRUSTED_CONTRACT_ROLE =
         keccak256("TRUSTED_CONTRACT_ROLE");

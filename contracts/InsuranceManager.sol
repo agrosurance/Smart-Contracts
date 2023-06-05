@@ -7,9 +7,8 @@ import "./FundManager.sol";
 import {Functions, FunctionsClient} from "./dev/functions/FunctionsClient.sol";
 // import "@chainlink/contracts/src/v0.8/dev/functions/FunctionsClient.sol"; // Once published
 import {ConfirmedOwner} from "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract InsuranceManager is FunctionsClient, ConfirmedOwner, Ownable {
+contract InsuranceManager is FunctionsClient, ConfirmedOwner {
   using Functions for Functions.Request;
 
   struct QuoteRequest {
@@ -103,10 +102,7 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner, Ownable {
    * @notice Send a simple request
    *
    * @param source JavaScript source code
-   * @param secrets Encrypted secrets payload
    * @param args List of arguments accessible from within the source code
-   * @param subscriptionId Funtions billing subscription ID
-   * @param gasLimit Maximum amount of gas used to call the client contract's `handleOracleFulfillment` function
    * @return Functions request ID
    */
   function _executeRequest(string memory source, string[] memory args) internal returns (bytes32) {
@@ -117,7 +113,7 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner, Ownable {
     }
     if (args.length > 0) req.addArgs(args);
 
-    bytes32 assignedReqID = sendRequest(req, subscriptionId, chainlinkFunctionGasLimit);
+    bytes32 assignedReqID = sendRequest(req, chainlinkSubscriptionId, chainlinkFunctionGasLimit);
     return assignedReqID;
   }
 

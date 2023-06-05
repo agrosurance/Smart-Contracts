@@ -5,36 +5,32 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract FundManager is Pausable, AccessControl {
-    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-    bytes32 public constant TRUSTED_CONTRACT_ROLE =
-        keccak256("TRUSTED_CONTRACT_ROLE");
+  bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+  bytes32 public constant TRUSTED_CONTRACT_ROLE = keccak256("TRUSTED_CONTRACT_ROLE");
 
-    error TransferFailed();
+  error TransferFailed();
 
-    constructor() {
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(PAUSER_ROLE, msg.sender);
-    }
+  constructor() {
+    _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    _grantRole(PAUSER_ROLE, msg.sender);
+  }
 
-    function pause() public onlyRole(PAUSER_ROLE) {
-        _pause();
-    }
+  function pause() public onlyRole(PAUSER_ROLE) {
+    _pause();
+  }
 
-    function unpause() public onlyRole(PAUSER_ROLE) {
-        _unpause();
-    }
+  function unpause() public onlyRole(PAUSER_ROLE) {
+    _unpause();
+  }
 
-    function transferEth(
-        address to,
-        uint256 amount
-    ) external onlyRole(TRUSTED_CONTRACT_ROLE) {
-        (bool sent, ) = to.call{value: amount}("");
-        if (!sent) revert TransferFailed();
-    }
+  function transferEth(address to, uint256 amount) external onlyRole(TRUSTED_CONTRACT_ROLE) {
+    (bool sent, ) = to.call{value: amount}("");
+    if (!sent) revert TransferFailed();
+  }
 
-    // Function to receive Ether. msg.data must be empty
-    receive() external payable {}
+  // Function to receive Ether. msg.data must be empty
+  receive() external payable {}
 
-    // Fallback function is called when msg.data is not empty
-    fallback() external payable {}
+  // Fallback function is called when msg.data is not empty
+  fallback() external payable {}
 }

@@ -7,75 +7,71 @@ import "./FundManager.sol";
 
 /// @custom:security-contact contact@yashgoyal.dev
 contract StakingManager is Ownable {
-    struct Stake {
-        uint256 amount;
-        uint256 startTime;
-        uint256 initialRewardRate;
-    }
+  struct Stake {
+    uint256 amount;
+    uint256 startTime;
+    uint256 initialRewardRate;
+  }
 
-    mapping(address => uint256) public unclaimedBalance;
-    mapping(address => Stake) public stakes;
+  mapping(address => uint256) public unclaimedBalance;
+  mapping(address => Stake) public stakes;
 
-    uint256 rewardRate;
-    uint256 lastUpdateTime;
-    uint256 totalStaked;
-    uint256 totalRewardRate;
-    IERC20 rewardToken;
-    FundManager fundManager;
+  uint256 rewardRate;
+  uint256 lastUpdateTime;
+  uint256 totalStaked;
+  uint256 totalRewardRate;
+  IERC20 rewardToken;
+  FundManager fundManager;
 
-    error InsufficientBalance();
-    error FundTransferFailed();
+  error InsufficientBalance();
+  error FundTransferFailed();
 
-    constructor(IERC20 _rewardToken, FundManager _fundManager) {
-        rewardToken = _rewardToken;
-        fundManager = _fundManager;
-    }
+  constructor(IERC20 _rewardToken, FundManager _fundManager) {
+    rewardToken = _rewardToken;
+    fundManager = _fundManager;
+  }
 
-    function stake() public payable {
-        _updateUnclaimedBalance(msg.sender);
+  function stake() public payable {
+    _updateUnclaimedBalance(msg.sender);
 
-        totalStaked += msg.value;
+    totalStaked += msg.value;
 
-        // update the stake amount
-        stakes[msg.sender].amount += msg.value;
+    // update the stake amount
+    stakes[msg.sender].amount += msg.value;
 
-        // deposit the amount in tresury
-        (bool success, ) = address(fundManager).call{value: msg.value}("");
-        if (!success) revert FundTransferFailed();
-    }
+    // deposit the amount in tresury
+    (bool success, ) = address(fundManager).call{value: msg.value}("");
+    if (!success) revert FundTransferFailed();
+  }
 
-    function unstake() public {
-        uint256 stakedAmount = stakes[msg.sender].amount;
-        if (stakedAmount == 0) revert InsufficientBalance();
+  function unstake() public {
+    uint256 stakedAmount = stakes[msg.sender].amount;
+    if (stakedAmount == 0) revert InsufficientBalance();
 
-        _updateUnclaimedBalance(msg.sender);
+    _updateUnclaimedBalance(msg.sender);
 
-        totalStaked += stakedAmount;
+    totalStaked += stakedAmount;
 
-        delete stakes[msg.sender];
+    delete stakes[msg.sender];
 
-        // send the amount back
-        fundManager.transferEth(msg.sender, stakedAmount);
-    }
+    // send the amount back
+    fundManager.transferEth(msg.sender, stakedAmount);
+  }
 
-    function claimReward() public {
-        _updateUnclaimedBalance(msg.sender);
-        uint256 balance = unclaimedBalance[msg.sender];
-        if (balance == 0) revert InsufficientBalance();
-        rewardToken.transfer(msg.sender, balance);
-        unclaimedBalance[msg.sender] = 0;
-    }
+  function claimReward() public {
+    _updateUnclaimedBalance(msg.sender);
+    uint256 balance = unclaimedBalance[msg.sender];
+    if (balance == 0) revert InsufficientBalance();
+    rewardToken.transfer(msg.sender, balance);
+    unclaimedBalance[msg.sender] = 0;
+  }
 
-    function _updateUnclaimedBalance(address user) internal {
-        rewardRate +=
-            ((block.timestamp - lastUpdateTime) * 10 ** 18 * totalRewardRate) /
-            totalStaked;
-        lastUpdateTime = block.timestamp;
-        Stake memory lastStake = stakes[user];
-        unclaimedBalance[user] +=
-            (lastStake.amount * (rewardRate - lastStake.initialRewardRate)) /
-            10 ** 18;
-        stakes[user].startTime = block.timestamp;
-        stakes[user].initialRewardRate = rewardRate;
-    }
+  function _updateUnclaimedBalance(address user) internal {
+    rewardRate += ((block.timestamp - lastUpdateTime) * 10 ** 18 * totalRewardRate) / totalStaked;
+    lastUpdateTime = block.timestamp;
+    Stake memory lastStake = stakes[user];
+    unclaimedBalance[user] += (lastStake.amount * (rewardRate - lastStake.initialRewardRate)) / 10 ** 18;
+    stakes[user].startTime = block.timestamp;
+    stakes[user].initialRewardRate = rewardRate;
+  }
 }

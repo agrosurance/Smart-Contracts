@@ -111,7 +111,7 @@ contract AgroSuranceLand is ERC721, ERC721Enumerable, ERC721Burnable, Ownable {
   ) external onlyLandOwner(landId) {
     if (!cropExists(cycleCropId)) revert InvalidCropId();
     Land memory land = landDetails[landId];
-    if (land.currentCycleTo < block.timestamp) revert LastCycleNotFinished();
+    if (land.currentCycleTo > block.timestamp) revert LastCycleNotFinished();
     if (cycleFrom > block.timestamp) revert CycleNotStartedYet();
     if (cycleTo <= cycleFrom) revert CycleEndTimeLessThanStart();
 

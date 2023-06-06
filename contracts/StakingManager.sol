@@ -31,6 +31,10 @@ contract StakingManager is Ownable {
     fundManager = _fundManager;
   }
 
+  function setTotalRewardRate(uint256 _totalRewardRate) public onlyOwner {
+    totalRewardRate = _totalRewardRate;
+  }
+
   function stake() public payable {
     _updateUnclaimedBalance(msg.sender);
 

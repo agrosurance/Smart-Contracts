@@ -4,6 +4,7 @@ pragma solidity ^0.8.17;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./FundManager.sol";
+import "hardhat/console.sol";
 
 /// @custom:security-contact contact@yashgoyal.dev
 contract StakingManager is Ownable {
@@ -54,7 +55,7 @@ contract StakingManager is Ownable {
 
     _updateUnclaimedBalance(msg.sender);
 
-    totalStaked += stakedAmount;
+    totalStaked -= stakedAmount;
 
     delete stakes[msg.sender];
 
@@ -71,11 +72,20 @@ contract StakingManager is Ownable {
   }
 
   function _updateUnclaimedBalance(address user) internal {
-    rewardRate += ((block.timestamp - lastUpdateTime) * 10 ** 18 * totalRewardRate) / totalStaked;
+    if (totalStaked != 0) {
+      rewardRate += ((block.timestamp - lastUpdateTime) * 10 ** 18 * totalRewardRate) / totalStaked; 
+    }
     lastUpdateTime = block.timestamp;
     Stake memory lastStake = stakes[user];
     unclaimedBalance[user] += (lastStake.amount * (rewardRate - lastStake.initialRewardRate)) / 10 ** 18;
     stakes[user].startTime = block.timestamp;
     stakes[user].initialRewardRate = rewardRate;
+  }
+
+  function checkUnclaimedBalance(address user) public view returns (uint256) {
+    if (totalStaked == 0) return 0;
+    uint256 currentRewardRate = rewardRate + ((block.timestamp - lastUpdateTime) * 10 ** 18 * totalRewardRate) / totalStaked;
+    Stake memory lastStake = stakes[user];
+    return unclaimedBalance[user] + (lastStake.amount * (currentRewardRate - lastStake.initialRewardRate)) / 10 ** 18;
   }
 }

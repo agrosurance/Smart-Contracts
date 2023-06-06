@@ -1,5 +1,6 @@
 const { networks } = require("../networks")
 const hre = require("hardhat")
+const fs = require("fs")
 
 const landContractDescription = "Land Contract Description"
 const defaultCropImage = "https://nftstorage.link/ipfs/bafkreid6tmxbk4ufk5qng2jw4pa36c4gv7baxnbtr4cjhsxrfk4mvfxzgu"

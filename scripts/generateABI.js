@@ -22,15 +22,15 @@ async function main() {
   const InsuranceManager = await ethers.getContractFactory("InsuranceManager")
 
   const AgroCoinABI = AgroCoin.interface.format(ethers.utils.FormatTypes.json)
-  saveABIFile("AgroCoin.abi", AgroCoinABI)
+  saveABIFile("AgroCoin.json", AgroCoinABI)
   const AgroSuranceLandABI = AgroSuranceLand.interface.format(ethers.utils.FormatTypes.json)
-  saveABIFile("AgroSuranceLand.abi", AgroSuranceLandABI)
+  saveABIFile("AgroSuranceLand.json", AgroSuranceLandABI)
   const FundManagerABI = FundManager.interface.format(ethers.utils.FormatTypes.json)
-  saveABIFile("FundManager.abi", FundManagerABI)
+  saveABIFile("FundManager.json", FundManagerABI)
   const StakingManagerABI = StakingManager.interface.format(ethers.utils.FormatTypes.json)
-  saveABIFile("StakingManager.abi", StakingManagerABI)
+  saveABIFile("StakingManager.json", StakingManagerABI)
   const InsuranceManagerABI = InsuranceManager.interface.format(ethers.utils.FormatTypes.json)
-  saveABIFile("InsuranceManager.abi", InsuranceManagerABI)
+  saveABIFile("InsuranceManager.json", InsuranceManagerABI)
 }
 
 main().catch((err) => {

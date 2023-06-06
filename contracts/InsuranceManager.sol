@@ -7,12 +7,20 @@ import "./FundManager.sol";
 import {Functions, FunctionsClient} from "./dev/functions/FunctionsClient.sol";
 // import "@chainlink/contracts/src/v0.8/dev/functions/FunctionsClient.sol"; // Once published
 import {ConfirmedOwner} from "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract InsuranceManager is FunctionsClient, ConfirmedOwner {
   using Functions for Functions.Request;
+  using Strings for uint256;
+  using Strings for int256;
+
+  enum RequestType {
+    CALCULATE_COVERAGE,
+    CHECK_CLAIM
+  }
 
   struct QuoteRequest {
-    uint256 requestId;
+    bytes32 requestId;
     address owner;
     uint256 landId;
     uint256 premium;
@@ -29,9 +37,12 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
 
   AgroSuranceLand public immutable landsContract;
 
-  mapping(uint256 => QuoteRequest) public quoteRequests; // requestId => QuoteRequest
-  mapping(uint256 => uint256[]) public insuranceHistory; // landId => requestId[]
+  mapping(bytes32 => QuoteRequest) public quoteRequests; // requestId => QuoteRequest
+  mapping(uint256 => bytes32[]) public insuranceHistory; // landId => requestId[]
   mapping(uint256 => uint256) public totalInsurances; // landId => no of insurances taken
+  mapping(bytes32 => RequestType) public requestTypes;
+
+  FundManager public fundManager;
 
   string public insurancePremiumCalculatorCode;
   string public checkInsuranceStatusCode;
@@ -41,18 +52,31 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
 
   error Unauthorized();
   error NoCropFound();
+  error RequestNotFulfilled();
+  error InvalidRequest();
+  error AlreadyInsured();
+  error QuotesExpired();
+  error IncorrectPremium();
 
   constructor(
     string memory _insurancePremiumCalculatorCode,
     AgroSuranceLand _landsContract,
+    FundManager _fundManager,
     address oracle
   ) FunctionsClient(oracle) ConfirmedOwner(msg.sender) {
     landsContract = _landsContract;
     insurancePremiumCalculatorCode = _insurancePremiumCalculatorCode;
+    fundManager = _fundManager;
   }
 
   modifier onlyLandOwner(uint256 landId) {
     if (landsContract.ownerOf(landId) != msg.sender) revert Unauthorized();
+    _;
+  }
+
+  modifier onlyRequestOwner(bytes32 requestId) {
+    if (quoteRequests[requestId].owner == address(0)) revert InvalidRequest();
+    if (quoteRequests[requestId].owner != msg.sender) revert Unauthorized();
     _;
   }
 
@@ -72,7 +96,7 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
     chainlinkFunctionGasLimit = _chainlinkFunctionGasLimit;
   }
 
-  function getInsuranceQuotes(uint256 landId, uint256 coverage) public onlyLandOwner(landId) {
+  function getInsuranceQuotes(uint256 landId, uint256 coverageTill, uint256 coverage) public onlyLandOwner(landId) {
     (
       uint256 landId,
       string memory name,
@@ -85,8 +109,19 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
       uint256 totalCycles
     ) = landsContract.landDetails(landId);
     if (currentCycleTo < block.timestamp) revert NoCropFound();
+    (uint256 cropId, string memory cropName, ) = landsContract.cropDetails(currentCycleCropId);
+
     // TODO: send chainlink function call and get the requestId
-    uint256 requestId = 0;
+    string[] memory args = new string[](5);
+
+    args[0] = int256(lat).toString();
+    args[1] = int256(long).toString();
+    args[2] = cropName;
+    args[3] = coverage.toString();
+    args[4] = coverageTill.toString();
+
+    bytes32 requestId = _executeRequest(insurancePremiumCalculatorCode, args);
+    requestTypes[requestId] = RequestType.CALCULATE_COVERAGE;
 
     QuoteRequest storage quoteRequest = quoteRequests[requestId];
     quoteRequest.requestId = requestId;
@@ -97,6 +132,8 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
     quoteRequest.insuranceFrom = block.timestamp;
     quoteRequest.insuranceTo = currentCycleTo;
   }
+
+  function claim(bytes32 requestId) public onlyRequestOwner(requestId) {}
 
   /**
    * @notice Send a simple request
@@ -125,7 +162,34 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
    * @param err Aggregated error from the user code or from the execution pipeline
    * Either response or error parameter will be set, but never both
    */
-  function fulfillRequest(bytes32 requestId, bytes memory response, bytes memory err) internal override {}
+  function fulfillRequest(bytes32 requestId, bytes memory response, bytes memory err) internal override {
+    if (requestTypes[requestId] == RequestType.CALCULATE_COVERAGE) {
+      _fulfillCalculateCoverageRequest(requestId, response, err);
+    }
+    if (requestTypes[requestId] == RequestType.CHECK_CLAIM) {
+      _fulfillCheckClaimRequest(requestId, response, err);
+    }
+  }
+
+  function _fulfillCalculateCoverageRequest(bytes32 requestId, bytes memory response, bytes memory err) internal {
+    quoteRequests[requestId].isRequestFulfilled = true;
+    quoteRequests[requestId].latestResponse = response;
+    quoteRequests[requestId].latestError = err;
+    uint256 premium = abi.decode(response, (uint256));
+    quoteRequests[requestId].premium = premium;
+  }
+
+  function buyInsurance(bytes32 requestId) external payable onlyRequestOwner(requestId) {
+    QuoteRequest memory request = quoteRequests[requestId];
+    if (!request.isRequestFulfilled) revert RequestNotFulfilled();
+    if (request.isInsured) revert AlreadyInsured();
+    if (request.insuranceFrom + 24 days < block.timestamp) revert QuotesExpired();
+    if (request.premium != msg.value) revert IncorrectPremium();
+    address(fundManager).call{value: msg.value}("");
+    quoteRequests[requestId].isInsured = true;
+  }
+
+  function _fulfillCheckClaimRequest(bytes32 requestId, bytes memory response, bytes memory err) internal {}
 
   /**
    * @notice Allows the Functions oracle address to be updated

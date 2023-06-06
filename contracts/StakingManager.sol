@@ -73,7 +73,7 @@ contract StakingManager is Ownable {
 
   function _updateUnclaimedBalance(address user) internal {
     if (totalStaked != 0) {
-      rewardRate += ((block.timestamp - lastUpdateTime) * 10 ** 18 * totalRewardRate) / totalStaked; 
+      rewardRate += ((block.timestamp - lastUpdateTime) * 10 ** 18 * totalRewardRate) / totalStaked;
     }
     lastUpdateTime = block.timestamp;
     Stake memory lastStake = stakes[user];
@@ -84,7 +84,9 @@ contract StakingManager is Ownable {
 
   function checkUnclaimedBalance(address user) public view returns (uint256) {
     if (totalStaked == 0) return 0;
-    uint256 currentRewardRate = rewardRate + ((block.timestamp - lastUpdateTime) * 10 ** 18 * totalRewardRate) / totalStaked;
+    uint256 currentRewardRate = rewardRate +
+      ((block.timestamp - lastUpdateTime) * 10 ** 18 * totalRewardRate) /
+      totalStaked;
     Stake memory lastStake = stakes[user];
     return unclaimedBalance[user] + (lastStake.amount * (currentRewardRate - lastStake.initialRewardRate)) / 10 ** 18;
   }

@@ -50,6 +50,24 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
   uint64 public chainlinkSubscriptionId;
   uint32 public chainlinkFunctionGasLimit;
 
+  event QuotesRequestMade(
+    address indexed owner,
+    uint256 indexed landId,
+    bytes32 indexed requestId,
+    uint256 cropId,
+    uint256 insuranceFrom,
+    uint256 insuranceTo,
+    uint256 coverage
+  );
+  event QuotesRequestFulfilled(
+    address indexed owner,
+    uint256 indexed landId,
+    bytes32 indexed requestId,
+    uint256 premium
+  );
+  event Insured(address indexed owner, uint256 indexed landId, bytes32 indexed requestId);
+  event InsuranceClaimed();
+
   error Unauthorized();
   error NoCropFound();
   error RequestNotFulfilled();
@@ -57,6 +75,7 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
   error AlreadyInsured();
   error QuotesExpired();
   error IncorrectPremium();
+  error OnlyOneRequestEveryDay();
 
   constructor(
     string memory _insurancePremiumCalculatorCode,
@@ -96,7 +115,11 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
     chainlinkFunctionGasLimit = _chainlinkFunctionGasLimit;
   }
 
-  function getInsuranceQuotes(uint256 landId, uint256 coverageTill, uint256 coverage) public onlyLandOwner(landId) {
+  function getInsuranceQuotes(
+    uint256 landId,
+    uint256 coverageTill,
+    uint256 coverage
+  ) public onlyLandOwner(landId) returns (bytes32 requestId) {
     (
       uint256 landId,
       string memory name,
@@ -111,6 +134,14 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
     if (currentCycleTo < block.timestamp) revert NoCropFound();
     (uint256 cropId, string memory cropName, ) = landsContract.cropDetails(currentCycleCropId);
 
+    // check if last request was made within last 24 hours ago
+    uint256 noOfRequests = totalInsurances[landId];
+
+    if (noOfRequests != 0) {
+      bytes32 lastRequestId = insuranceHistory[landId][noOfRequests - 1];
+      if (quoteRequests[lastRequestId].insuranceFrom > block.timestamp - 24 * 60 * 60) revert OnlyOneRequestEveryDay();
+    }
+
     // TODO: send chainlink function call and get the requestId
     string[] memory args = new string[](5);
 
@@ -120,7 +151,7 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
     args[3] = coverage.toString();
     args[4] = coverageTill.toString();
 
-    bytes32 requestId = _executeRequest(insurancePremiumCalculatorCode, args);
+    requestId = _executeRequest(insurancePremiumCalculatorCode, args);
     requestTypes[requestId] = RequestType.CALCULATE_COVERAGE;
 
     QuoteRequest storage quoteRequest = quoteRequests[requestId];
@@ -130,7 +161,12 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
     quoteRequest.coverage = coverage;
     quoteRequest.cropId = currentCycleCropId;
     quoteRequest.insuranceFrom = block.timestamp;
-    quoteRequest.insuranceTo = currentCycleTo;
+    quoteRequest.insuranceTo = coverageTill;
+
+    insuranceHistory[landId].push(requestId);
+    totalInsurances[landId]++;
+
+    emit QuotesRequestMade(msg.sender, landId, requestId, currentCycleCropId, block.timestamp, coverageTill, coverage);
   }
 
   function claim(bytes32 requestId) public onlyRequestOwner(requestId) {}
@@ -177,6 +213,8 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
     quoteRequests[requestId].latestError = err;
     uint256 premium = abi.decode(response, (uint256));
     quoteRequests[requestId].premium = premium;
+
+    emit QuotesRequestFulfilled(quoteRequests[requestId].owner, quoteRequests[requestId].landId, requestId, premium);
   }
 
   function buyInsurance(bytes32 requestId) external payable onlyRequestOwner(requestId) {
@@ -187,6 +225,8 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
     if (request.premium != msg.value) revert IncorrectPremium();
     address(fundManager).call{value: msg.value}("");
     quoteRequests[requestId].isInsured = true;
+
+    emit Insured(msg.sender, request.landId, requestId);
   }
 
   function _fulfillCheckClaimRequest(bytes32 requestId, bytes memory response, bytes memory err) internal {}

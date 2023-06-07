@@ -52,6 +52,11 @@ contract AgroSuranceLand is ERC721, ERC721Enumerable, ERC721Burnable, Ownable {
   mapping(uint256 => Crop) public cropDetails;
   mapping(uint256 => LandHistory[]) public landHistory;
 
+  event CropAdded(uint256 indexed id, string name, string image);
+  event CropUpdated(uint256 indexed id, string name, string image);
+  event LandAdded(uint256 indexed landId, string name, int32 lat, int32 long, uint256 area);
+  event CycleAdded(uint256 indexed landId, uint256 indexed cropId, uint256 cycleFrom, uint256 cycleTo);
+
   error InvalidCropId();
   error InvalidLandId();
   error Unauthorized();
@@ -63,6 +68,7 @@ contract AgroSuranceLand is ERC721, ERC721Enumerable, ERC721Burnable, Ownable {
 
   constructor(string memory _description, string memory _defaultCropImage) ERC721("AgroSuranceLand", "ASL") {
     description = _description;
+    cropDetails[0].cropId = 0;
     cropDetails[0].name = "No Crop";
     cropDetails[0].image = _defaultCropImage;
   }
@@ -78,8 +84,10 @@ contract AgroSuranceLand is ERC721, ERC721Enumerable, ERC721Burnable, Ownable {
     _cropIdCounter.increment();
     cropId = _cropIdCounter.current();
     Crop storage crop = cropDetails[cropId];
+    crop.cropId = cropId;
     crop.name = name;
     crop.image = image;
+    emit CropAdded(cropId, name, image);
   }
 
   function updateCrop(uint256 cropId, string calldata name, string calldata image) external onlyOwner {
@@ -88,6 +96,7 @@ contract AgroSuranceLand is ERC721, ERC721Enumerable, ERC721Burnable, Ownable {
     Crop storage crop = cropDetails[cropId];
     crop.name = name;
     crop.image = image;
+    emit CropUpdated(cropId, name, image);
   }
 
   function addLand(string calldata name, int32 lat, int32 long, uint256 area) external returns (uint256 landId) {
@@ -101,6 +110,7 @@ contract AgroSuranceLand is ERC721, ERC721Enumerable, ERC721Burnable, Ownable {
     land.lat = lat;
     land.long = long;
     land.area = area;
+    emit LandAdded(landId, name, lat, long, area);
   }
 
   function addCurrentCycle(
@@ -124,6 +134,7 @@ contract AgroSuranceLand is ERC721, ERC721Enumerable, ERC721Burnable, Ownable {
     landDetails[landId].currentCycleCropId = cycleCropId;
     landDetails[landId].currentCycleFrom = cycleFrom;
     landDetails[landId].currentCycleTo = cycleTo;
+    emit CycleAdded(landId, cycleCropId, cycleFrom, cycleTo);
   }
 
   // The following functions are overrides required by Solidity.

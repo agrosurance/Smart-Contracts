@@ -4,7 +4,6 @@ pragma solidity ^0.8.17;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./FundManager.sol";
-import "hardhat/console.sol";
 
 /// @custom:security-contact contact@yashgoyal.dev
 contract StakingManager is Ownable {
@@ -17,12 +16,17 @@ contract StakingManager is Ownable {
   mapping(address => uint256) public unclaimedBalance;
   mapping(address => Stake) public stakes;
 
-  uint256 rewardRate;
-  uint256 lastUpdateTime;
-  uint256 totalStaked;
-  uint256 totalRewardRate;
-  IERC20 rewardToken;
-  FundManager fundManager;
+  uint256 public rewardRate;
+  uint256 public lastUpdateTime;
+  uint256 public totalStaked;
+  uint256 public totalRewardRate;
+  IERC20 public rewardToken;
+  FundManager public fundManager;
+
+  event AmountStaked(address indexed staker, uint256 amount, uint256 balance);
+  event AmountUnstaked(address indexed staker, uint256 amount, uint256 balance);
+  event RewardClaimed(address indexed staker, uint256 reward);
+  event RewardRateUpdated(uint256 rewardRate);
 
   error InsufficientBalance();
   error FundTransferFailed();
@@ -34,6 +38,7 @@ contract StakingManager is Ownable {
 
   function setTotalRewardRate(uint256 _totalRewardRate) public onlyOwner {
     totalRewardRate = _totalRewardRate;
+    emit RewardRateUpdated(_totalRewardRate);
   }
 
   function stake() public payable {
@@ -47,28 +52,34 @@ contract StakingManager is Ownable {
     // deposit the amount in tresury
     (bool success, ) = address(fundManager).call{value: msg.value}("");
     if (!success) revert FundTransferFailed();
+
+    emit AmountStaked(msg.sender, msg.value, stakes[msg.sender].amount);
   }
 
-  function unstake() public {
+  function unstake(uint256 amount) public {
     uint256 stakedAmount = stakes[msg.sender].amount;
-    if (stakedAmount == 0) revert InsufficientBalance();
+    if (stakedAmount < amount) revert InsufficientBalance();
 
     _updateUnclaimedBalance(msg.sender);
 
-    totalStaked -= stakedAmount;
+    totalStaked -= amount;
 
-    delete stakes[msg.sender];
+    stakes[msg.sender].amount = stakedAmount - amount;
 
     // send the amount back
-    fundManager.transferEth(msg.sender, stakedAmount);
+    fundManager.transferEth(msg.sender, amount);
+
+    emit AmountUnstaked(msg.sender, amount, stakedAmount - amount);
   }
 
   function claimReward() public {
     _updateUnclaimedBalance(msg.sender);
     uint256 balance = unclaimedBalance[msg.sender];
     if (balance == 0) revert InsufficientBalance();
-    rewardToken.transfer(msg.sender, balance);
     unclaimedBalance[msg.sender] = 0;
+    rewardToken.transfer(msg.sender, balance);
+
+    emit RewardClaimed(msg.sender, balance);
   }
 
   function _updateUnclaimedBalance(address user) internal {

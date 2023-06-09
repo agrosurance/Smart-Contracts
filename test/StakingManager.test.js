@@ -68,7 +68,7 @@ describe("Staking Manager Contract", () => {
     await time.increase(60 * 2)
     console.log(await ethers.provider.getBalance(fundManager.address))
     console.log(await ethers.provider.getBalance(accounts[1]))
-    await stakingManager.connect(signers[1]).unstake()
+    await stakingManager.connect(signers[1]).unstake(ethers.utils.parseEther("10"))
     console.log(await ethers.provider.getBalance(fundManager.address))
     console.log(await ethers.provider.getBalance(accounts[1]))
   })

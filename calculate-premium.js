@@ -140,7 +140,7 @@ const curr = (new Date().getTime() / 1000) | 0
 const latitude = parseInt(args[0]) / 10 ** 6
 const longitude = parseInt(args[1]) / 10 ** 6
 const cropName = args[2]
-const coverage = parseInt(args[3]) / 10 ** 18
+const coverage = parseInt(args[3])
 const days = Math.ceil((parseInt(args[4]) - curr) / (24 * 60 * 60))
 
 const land = {

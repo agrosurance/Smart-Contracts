@@ -22,17 +22,19 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
   struct QuoteRequest {
     bytes32 requestId;
     address owner;
+    bool isRequestFulfilled;
+    bool isCheckClaimRequestFulfilled;
+    bool isInsured;
+    bool isInsuranceClaimable;
+    bool isInsuranceClaimed;
     uint256 landId;
     uint256 premium;
     uint256 coverage;
     uint256 cropId;
     uint256 insuranceFrom;
     uint256 insuranceTo;
-    bool isRequestFulfilled;
-    bytes latestResponse;
+    uint256 insuranceStatusRequestTime;
     bytes latestError;
-    bool isInsured;
-    bool isInsuranceClaimed;
   }
 
   AgroSuranceLand public immutable landsContract;
@@ -41,6 +43,7 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
   mapping(uint256 => bytes32[]) public insuranceHistory; // landId => requestId[]
   mapping(uint256 => uint256) public totalInsurances; // landId => no of insurances taken
   mapping(bytes32 => RequestType) public requestTypes;
+  mapping(bytes32 => bytes32) public claimRequestToQuoteRequest; // claimRequestId => quoteRequestId
 
   FundManager public fundManager;
 
@@ -66,25 +69,48 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
     uint256 premium
   );
   event Insured(address indexed owner, uint256 indexed landId, bytes32 indexed requestId);
-  event InsuranceClaimed();
+  event CheckClaimRequestMade(
+    address indexed owner,
+    uint256 indexed landId,
+    bytes32 indexed requestId,
+    uint256 cropId,
+    uint256 insuranceFrom,
+    uint256 insuranceTo,
+    bytes32 claimRequestId
+  );
+  event CheckClaimRequestFulfilled(
+    address indexed owner,
+    uint256 indexed landId,
+    bytes32 indexed requestId,
+    bytes32 claimRequestId,
+    bool isClaimable
+  );
+  event InsuranceClaimed(address indexed owner, uint256 indexed landId, bytes32 indexed requestId, uint256 amount);
 
   error Unauthorized();
   error NoCropFound();
   error RequestNotFulfilled();
   error InvalidRequest();
   error AlreadyInsured();
+  error NotInsured();
+  error AlreadyClaimed();
+  error AlreadyClaimable();
+  error NotClaimable();
   error QuotesExpired();
   error IncorrectPremium();
   error OnlyOneRequestEveryDay();
+  error AmountTransferFailed();
 
   constructor(
     string memory _insurancePremiumCalculatorCode,
+    string memory _checkInsuranceStatusCode,
     AgroSuranceLand _landsContract,
     FundManager _fundManager,
     address oracle
   ) FunctionsClient(oracle) ConfirmedOwner(msg.sender) {
     landsContract = _landsContract;
     insurancePremiumCalculatorCode = _insurancePremiumCalculatorCode;
+    checkInsuranceStatusCode = _checkInsuranceStatusCode;
     fundManager = _fundManager;
   }
 
@@ -101,6 +127,10 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
 
   function setInsurancePremiumCalculatorCode(string calldata _insurancePremiumCalculatorCode) public onlyOwner {
     insurancePremiumCalculatorCode = _insurancePremiumCalculatorCode;
+  }
+
+  function setCheckInsuranceStatusCode(string calldata _checkInsuranceStatusCode) public onlyOwner {
+    checkInsuranceStatusCode = _checkInsuranceStatusCode;
   }
 
   function setSecrets(bytes calldata _secrets) public onlyOwner {
@@ -153,7 +183,6 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
 
     requestId = _executeRequest(insurancePremiumCalculatorCode, args);
     requestTypes[requestId] = RequestType.CALCULATE_COVERAGE;
-
     QuoteRequest storage quoteRequest = quoteRequests[requestId];
     quoteRequest.requestId = requestId;
     quoteRequest.owner = msg.sender;
@@ -169,7 +198,68 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
     emit QuotesRequestMade(msg.sender, landId, requestId, currentCycleCropId, block.timestamp, coverageTill, coverage);
   }
 
-  function claim(bytes32 requestId) public onlyRequestOwner(requestId) {}
+  function checkInsuranceStatus(
+    bytes32 requestId
+  ) external onlyRequestOwner(requestId) returns (bytes32 claimRequestId) {
+    QuoteRequest memory request = quoteRequests[requestId];
+    if (!request.isInsured) revert NotInsured();
+    if (request.isInsuranceClaimed) revert AlreadyClaimed();
+    if (request.isInsuranceClaimable) revert AlreadyClaimable();
+    if (request.insuranceStatusRequestTime > block.timestamp - 24 * 60 * 60) revert OnlyOneRequestEveryDay();
+    (
+      uint256 landId,
+      string memory name,
+      uint256 area,
+      int32 lat,
+      int32 long,
+      uint256 currentCycleCropId,
+      uint256 currentCycleFrom,
+      uint256 currentCycleTo,
+      uint256 totalCycles
+    ) = landsContract.landDetails(request.landId);
+    if (currentCycleTo < block.timestamp) revert NoCropFound();
+    (uint256 cropId, string memory cropName, ) = landsContract.cropDetails(currentCycleCropId);
+
+    string[] memory args = new string[](5);
+
+    uint256 insuranceTo = request.insuranceTo > block.timestamp ? block.timestamp : request.insuranceTo;
+    args[0] = int256(lat).toString();
+    args[1] = int256(long).toString();
+    args[2] = cropName;
+    args[3] = request.insuranceFrom.toString();
+    args[4] = insuranceTo.toString();
+
+    claimRequestId = _executeRequest(checkInsuranceStatusCode, args);
+    requestTypes[claimRequestId] = RequestType.CHECK_CLAIM;
+
+    claimRequestToQuoteRequest[claimRequestId] = requestId;
+
+    quoteRequests[requestId].insuranceStatusRequestTime = block.timestamp;
+    emit CheckClaimRequestMade(
+      msg.sender,
+      landId,
+      requestId,
+      cropId,
+      request.insuranceFrom,
+      insuranceTo,
+      claimRequestId
+    );
+  }
+
+  function claim(bytes32 requestId) public onlyRequestOwner(requestId) {
+    QuoteRequest memory request = quoteRequests[requestId];
+    if (!request.isInsured) revert NotInsured();
+    if (request.isInsuranceClaimed) revert AlreadyClaimed();
+    if (!request.isInsuranceClaimable) revert NotClaimable();
+
+    quoteRequests[requestId].isInsuranceClaimed = true;
+
+    (bool success, ) = address(msg.sender).call{value: request.coverage}("");
+
+    if (!success) revert AmountTransferFailed();
+
+    emit InsuranceClaimed(msg.sender, request.landId, requestId, request.coverage);
+  }
 
   /**
    * @notice Send a simple request
@@ -209,7 +299,6 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
 
   function _fulfillCalculateCoverageRequest(bytes32 requestId, bytes memory response, bytes memory err) internal {
     quoteRequests[requestId].isRequestFulfilled = true;
-    quoteRequests[requestId].latestResponse = response;
     quoteRequests[requestId].latestError = err;
     uint256 premium = abi.decode(response, (uint256));
     quoteRequests[requestId].premium = premium;
@@ -229,7 +318,20 @@ contract InsuranceManager is FunctionsClient, ConfirmedOwner {
     emit Insured(msg.sender, request.landId, requestId);
   }
 
-  function _fulfillCheckClaimRequest(bytes32 requestId, bytes memory response, bytes memory err) internal {}
+  function _fulfillCheckClaimRequest(bytes32 claimRequestId, bytes memory response, bytes memory /* err */) internal {
+    bytes32 requestId = claimRequestToQuoteRequest[claimRequestId];
+    quoteRequests[requestId].isCheckClaimRequestFulfilled = true;
+    bool isClaimable = abi.decode(response, (bool));
+    quoteRequests[requestId].isInsuranceClaimable = isClaimable;
+
+    emit CheckClaimRequestFulfilled(
+      quoteRequests[requestId].owner,
+      quoteRequests[requestId].landId,
+      requestId,
+      claimRequestId,
+      isClaimable
+    );
+  }
 
   /**
    * @notice Allows the Functions oracle address to be updated

@@ -11,3 +11,13 @@ REPORT_GAS=true npx hardhat test
 npx hardhat node
 npx hardhat run scripts/deploy.js
 ```
+
+Set the env-enc for the following environment variables
+
+```
+PRIVATE_KEY
+WEATHER_API_KEY
+POSITIONSTACK_API_KEY
+POLYGON_MUMBAI_RPC_URL
+POLYGONSCAN_API_KEY
+```
